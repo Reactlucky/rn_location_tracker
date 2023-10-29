@@ -9,15 +9,21 @@ import {
   Platform,
   Button,
   TextInput,
+  AppState,
 } from 'react-native';
 import MapView, {Marker, AnimatedRegion} from 'react-native-maps';
 import {GOOGLE_MAP_KEY} from '../constants/googleMapKey';
 import imagePath from '../constants/imagePath';
 import MapViewDirections from 'react-native-maps-directions';
 import Loader from '../components/Loader';
-import {locationPermission, getCurrentLocation} from '../helper/helperFunction';
+import {
+  locationPermission,
+  getCurrentLocation,
+  getCurrentWatch,
+} from '../helper/helperFunction';
 import {useNavigation} from '@react-navigation/native';
 import BackgroundTimer from 'react-native-background-timer';
+import Geolocation from '@react-native-community/geolocation';
 
 const screen = Dimensions.get('window');
 const ASPECT_RATIO = screen.width / screen.height;
@@ -26,32 +32,15 @@ const LONGITUDE_DELTA = LATITUDE_DELTA * ASPECT_RATIO;
 let usersData = [];
 
 const Map = ({navigation, route}) => {
-  // const navigation = useNavigation();
+  const FribeClient = require('../FribeClient');
 
   const mapRef = useRef();
   const markerRef = useRef();
 
-  const [newUserCord, setNewUserCord] = useState({
-    latitude: 24.8852,
-    longitude: 72.8575,
-  });
-
   // ------------------FRIBE CODE-----------------
-
-  const FribeClient = require('../FribeClient');
-
-  // console.log('ruuning client...');
-
   const fribe = new FribeClient('01HBJYWF109Q3FEJX5X4748CNR');
 
-  useEffect(() => {
-    // fribe.subscribe('tasleem_channel', 'event_name', data => {
-    //   console.log('subscribe --> ', data);
-    //   setNewUserCord(data.coordinate);
-    // });
-
-    // Initialize an empty array to store user data
-
+  const fribeSubscribeFunction = () => {
     fribe.subscribe('tasleem_channel', 'event_name', data => {
       // Check if the user with the given userID already exists in the array
       const existingUserIndex = usersData.findIndex(
@@ -73,11 +62,15 @@ const Map = ({navigation, route}) => {
       }
 
       // Now usersData array contains data for multiple users
-      console.log('Users Data: -----> ', usersData);
+      // console.log('Users Data: -----> ', usersData);
 
       // You can use this updated array to display the user data on your screens.
       // For example, you can map through the array to display each user's data in your UI.
     });
+  };
+
+  useEffect(() => {
+    fribeSubscribeFunction();
   }, []);
 
   fribe.listen('fribe:subscription_error', err => {
@@ -99,13 +92,85 @@ const Map = ({navigation, route}) => {
     });
   };
 
+  // -------------------App State Code ------------------
+  const appState = useRef(AppState.currentState);
+  const [appStateVisible, setAppStateVisible] = useState(appState.current);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', nextAppState => {
+      if (
+        appState.current.match(/inactive|background/) &&
+        nextAppState === 'active'
+      ) {
+        console.log('App has come to the foreground!');
+      }
+
+      appState.current = nextAppState;
+      setAppStateVisible(appState.current);
+      console.log('AppState', appState.current);
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, []);
+  console.log('appStateVisible====>', appStateVisible);
+
+  // ------------------------
+
   const disconnectFribe = () => {
     fribe.unbind('tasleem_channel', 'event_name');
     console.log('Unbind call --> ');
     // fribe.disconnect();
     navigation.goBack();
-    setShowMap(false);
   };
+
+  // Fribe background call
+  useEffect(() => {
+    if (appStateVisible == 'background') {
+      BackgroundTimer.runBackgroundTimer(() => {
+        getLiveLocation();
+
+        // Geolocation.watchPosition(
+        //   position => {
+        //     console.log(
+        //       'position call ---',
+        //       position.coords.latitude,
+        //       position.coords.longitude,
+        //     );
+        //     callTrigger(
+        //       position.coords.latitude,
+        //       position.coords.latitude,
+        //       position.coords.heading,
+        //     );
+        //   },
+        //   error => {
+        //     console.log('error ----> ', error);
+        //   },
+        //   {enableHighAccuracy: false, timeout: 15000, maximumAge: 10000},
+        // );
+        console.log('call -- BG Func ---> ');
+      }, 4000);
+    } else null;
+
+    return () => {
+      BackgroundTimer.stopBackgroundTimer();
+    };
+  }, [appStateVisible]);
+
+  // Start a timer that runs continuous after X milliseconds
+  // const intervalId = BackgroundTimer.setInterval(() => {
+  //   // this will be executed every 200 ms
+  //   // even when app is the the background
+  //   console.log('test BG call  2--> ');
+  // }, 2000);
+
+  // Cancel the timer when you are done with it
+  // BackgroundTimer.clearInterval(intervalId);
+
+  //rest of code will be performing for iOS on background too
+
+  // BackgroundTimer.stopBackgroundTimer();
 
   // -----------------FRIBE CODE------------------
 
@@ -147,13 +212,14 @@ const Map = ({navigation, route}) => {
 
   const getLiveLocation = async () => {
     console.log(' live call ----');
-    
+    // console.log(' if ----', await getCurrentWatch());
+
     const locPermissionDenied = await locationPermission();
     console.log(' locPermissionDenied----', locPermissionDenied);
 
     if (locPermissionDenied) {
       const {latitude, longitude, heading} = await getCurrentLocation();
-      console.log('get live location after 4 second', heading);
+      console.log('call the live location --- >>', latitude, longitude);
       callTrigger(latitude, longitude, heading);
       animate(latitude, longitude);
       updateState({
@@ -177,19 +243,6 @@ const Map = ({navigation, route}) => {
     return () => clearInterval(interval);
   }, []);
 
-  // const onPressLocation = () => {
-  //   navigation.navigate('chooseLocation', {getCordinates: fetchValue});
-  // };
-  // const fetchValue = data => {
-  //   console.log('this is data', data);
-  //   updateState({
-  //     destinationCords: {
-  //       latitude: 24.5854,
-  //       longitude: 73.7125,
-  //     },
-  //   });
-  // };
-
   const animate = (latitude, longitude) => {
     const newCoordinate = {latitude, longitude};
     if (Platform.OS == 'android') {
@@ -210,30 +263,9 @@ const Map = ({navigation, route}) => {
     });
   };
 
-  const fetchTime = (d, t) => {
-    updateState({
-      distance: d,
-      time: t,
-    });
-  };
-
-  const [showMap, setShowMap] = useState(false);
-
-  const showMapFunc = () => {
-    setShowMap(true);
-  };
-
-  // console.log('destinationCords', destinationCords);
-
   return (
     <View style={styles.container}>
       <>
-        {distance !== 0 && time !== 0 && (
-          <View style={{alignItems: 'center', marginVertical: 16}}>
-            <Text>Time left: {time.toFixed(0)} </Text>
-            <Text>Distance left: {distance.toFixed(0)}</Text>
-          </View>
-        )}
         <View
           style={{
             backgroundColor: 'white',
@@ -305,27 +337,13 @@ const Map = ({navigation, route}) => {
         </View>
 
         <Loader isLoading={isLoading} />
-        <View
-          style={{
-            backgroundColor: '#fff',
-            height: 100,
-            width: '100%',
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}>
+        <View style={styles.bottomView}>
           <Text style={{fontWeight: 'bold', fontSize: 18, color: '#000'}}>
             CurrentLocation: {curLoc.latitude} / {curLoc.longitude}
           </Text>
 
           <TouchableOpacity
-            style={{
-              backgroundColor: '#7F00FF',
-              height: 35,
-              width: 95,
-              alignItems: 'center',
-              justifyContent: 'center',
-              borderRadius: 25,
-            }}
+            style={styles.unbindButton}
             onPress={disconnectFribe}>
             <Text style={{color: '#fff', fontWeight: 'bold'}}>Unbind</Text>
           </TouchableOpacity>
@@ -354,6 +372,21 @@ const styles = StyleSheet.create({
     height: 48,
     justifyContent: 'center',
     marginTop: 16,
+  },
+  unbindButton: {
+    backgroundColor: '#7F00FF',
+    height: 35,
+    width: 95,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 25,
+  },
+  bottomView: {
+    backgroundColor: '#fff',
+    height: 100,
+    width: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });
 

@@ -1,5 +1,5 @@
 import React from 'react';
-import {View, Text, TextInput, TouchableOpacity, Image} from 'react-native';
+import {View, Text, TextInput, TouchableOpacity, Image, Linking} from 'react-native';
 import {useNavigation} from '@react-navigation/native';
 import imagePath from '../constants/imagePath';
 
@@ -49,6 +49,14 @@ function Home() {
           onPress={() => navigation.navigate('Map', {user_id: text})}>
           <Text style={{color: '#fff', fontWeight: 'bold'}}>Next</Text>
         </TouchableOpacity>
+
+        <Text style={{color:'#000', marginTop: 25, textAlign:'center'}}>Please note: Allow the location permission to 'Always' from app settings for background. To enable that 
+        <Text onPress={() => Linking.openSettings()} style={{color: '#000', fontWeight: 'bold'}}>{' '}Click here</Text>
+        <Text onPress={() => Linking.openSettings()} style={{color: '#000'}}> and disable the battery saver.</Text>
+        </Text>
+
+         
+
       </View>
     </View>
   );

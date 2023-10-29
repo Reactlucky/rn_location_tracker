@@ -21,11 +21,31 @@ export const getCurrentLocation = () =>
             { enableHighAccuracy: false, timeout: 15000, maximumAge: 10000 },
         )
     })
+export const getCurrentWatch = () =>
+
+    new Promise((resolve, reject) => {
+        Geolocation.watchPosition(
+            position => {
+                console.log('position call ---', position.coords.latitude, position.coords.longitude );
+                const cords = {
+                    latitude: position.coords.latitude,
+                    longitude: position.coords.longitude,
+                    heading: position?.coords?.heading,
+                };
+                console
+                resolve(cords);
+            },
+            error => {
+                reject(error.message);
+            },
+            { enableHighAccuracy: false, timeout: 15000, maximumAge: 10000 },
+        )
+    })
 
 export const locationPermission = () => new Promise(async (resolve, reject) => {
     if (Platform.OS === 'ios') {
         try {
-            const permissionStatus = await Geolocation.requestAuthorization('whenInUse');
+            const permissionStatus = await Geolocation.requestAuthorization('always');
             if (permissionStatus === 'granted') {
                 return resolve("granted");
             }
